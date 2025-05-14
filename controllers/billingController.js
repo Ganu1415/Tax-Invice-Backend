@@ -1,6 +1,7 @@
 import Bill from "../models/Billing.js";
 import Item from "../models/itemModel.js";
 import moment from "moment"; // For date/time
+import { getNextInvoiceNumber } from "../utils/getNextInvoiceNumber.js";
 
 // Create Bill
 export const createBill = async (req, res) => {
@@ -11,33 +12,6 @@ export const createBill = async (req, res) => {
       return res.status(400).json({ message: "All fields are required!" });
     }
 
-    // let totalAmount = 0;
-    // let updatedItems = [];
-
-    // for (const item of items) {
-    //   const dbItem = await Item.findById(item.itemId);
-
-    //   if (!dbItem) {
-    //     return res.status(404).json({ message: "Item not found!" });
-    //   }
-
-    //   if (dbItem.quantity < item.quantity) {
-    //     return res
-    //       .status(400)
-    //       .json({ message: `Insufficient stock for ${dbItem.name}` });
-    //   }
-
-    //   // Update stock
-    //   dbItem.quantity -= item.quantity;
-    //   await dbItem.save();
-
-    //   totalAmount += dbItem.rate * item.quantity;
-
-    //   updatedItems.push({
-    //     itemId: dbItem._id,
-    //     quantity: item.quantity,
-    //   });
-    // }
     let totalAmount = 0;
     let updatedItems = [];
 
@@ -54,7 +28,6 @@ export const createBill = async (req, res) => {
           .json({ message: `Insufficient stock for ${dbItem.name}` });
       }
 
-      // Update stock
       dbItem.quantity -= item.quantity;
       await dbItem.save();
 
@@ -72,9 +45,29 @@ export const createBill = async (req, res) => {
       });
     }
 
-    const gstAmount = totalAmount * 0.12; // 12% GST
+    const gstAmount = totalAmount * 0.12;
     const finalAmount = totalAmount + gstAmount;
-    const balance = paymentType === "udhari" ? finalAmount : 0;
+    // ✅ Existing balance check
+
+    // let oldBalance = 0;
+    const lastBill = await Bill.find({
+      customerName,
+      customerMobile,
+    }).sort({ createdAt: -1 });
+
+    if (lastBill.length > 0) {
+      oldBalance = lastBill.reduce((sum, bill) => sum + bill.balance, 0); // Sum all previous balances
+    }
+
+    // ✅ New balance calculation with jama
+    let newBalance =
+      paymentType === "udhari" ? finalAmount + oldBalance : oldBalance;
+    // let newBalance =
+    //   paymentType === "udhari" ? finalAmount + oldBalance - jama : 0;
+
+    // const balance = paymentType === "udhari" ? finalAmount : 0;
+
+    const newInvoiceNumber = await getNextInvoiceNumber();
 
     const newBill = new Bill({
       customerName,
@@ -83,9 +76,11 @@ export const createBill = async (req, res) => {
       paymentType,
       totalAmount: finalAmount,
       gstAmount,
-      balance,
+      balance: newBalance,
+      invoiceNumber: newInvoiceNumber,
       date: moment().format("DD/MM/YYYY"),
       time: moment().format("hh:mm:ss A"),
+      // jama, // ✅ jama save
     });
 
     await newBill.save();
@@ -94,10 +89,84 @@ export const createBill = async (req, res) => {
       .status(201)
       .json({ message: "Bill created successfully", bill: newBill });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({ message: "Something went wrong" });
   }
 };
+
+// export const createBill = async (req, res) => {
+//   try {
+//     const { customerName, customerMobile, items, paymentType } = req.body;
+
+//     if (!customerName || !customerMobile || !items || items.length === 0) {
+//       return res.status(400).json({ message: "All fields are required!" });
+//     }
+//     debugger;
+//     let totalAmount = 0;
+//     let updatedItems = [];
+
+//     for (const item of items) {
+//       const dbItem = await Item.findById(item.itemId);
+
+//       if (!dbItem) {
+//         return res.status(404).json({ message: "Item not found!" });
+//       }
+
+//       if (dbItem.quantity < item.quantity) {
+//         return res
+//           .status(400)
+//           .json({ message: `Insufficient stock for ${dbItem.name}` });
+//       }
+
+//       // Update stock
+//       dbItem.quantity -= item.quantity;
+//       await dbItem.save();
+
+//       const itemTotal = dbItem.rate * item.quantity;
+//       totalAmount += itemTotal;
+
+//       updatedItems.push({
+//         itemId: dbItem._id,
+//         name: dbItem.name,
+//         rate: dbItem.rate,
+//         quantity: item.quantity,
+//         total: itemTotal,
+//         productId: dbItem.productId,
+//         companyId: dbItem.companyId,
+//       });
+//     }
+
+//     const gstAmount = totalAmount * 0.12; // 12% GST
+//     const finalAmount = totalAmount + gstAmount;
+//     const balance = paymentType === "udhari" ? finalAmount : 0;
+
+//     // ✅ Get latest invoice number and increment
+//     const newInvoiceNumber = await getNextInvoiceNumber();
+
+//     const newBill = new Bill({
+//       customerName,
+//       customerMobile,
+//       items: updatedItems,
+//       paymentType,
+//       totalAmount: finalAmount,
+//       gstAmount,
+//       balance,
+//       date: moment().format("DD/MM/YYYY"),
+//       time: moment().format("hh:mm:ss A"),
+//       invoiceNumber: newInvoiceNumber, // ✅ add invoice number
+//     });
+//     console.log("newBill", newBill);
+//     debugger;
+//     await newBill.save();
+
+//     res
+//       .status(201)
+//       .json({ message: "Bill created successfully", bill: newBill });
+//   } catch (error) {
+//     console.log(error);
+//     res.status(500).json({ message: "Something went wrong" });
+//   }
+// };
 
 // Get all Bills
 export const getAllBills = async (req, res) => {
