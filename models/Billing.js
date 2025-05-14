@@ -2,6 +2,15 @@ import mongoose from "mongoose";
 
 const billSchema = new mongoose.Schema(
   {
+    invoiceNumber: {
+      type: Number,
+      required: true,
+      unique: true, // avoid duplicates
+    },
+    // jama: {
+    //   type: Number,
+    //   default: 0,
+    // }, // balance update
     customerName: { type: String, required: true },
     customerMobile: { type: String, required: true },
     paymentType: { type: String, enum: ["cash", "udhari"], required: true },
